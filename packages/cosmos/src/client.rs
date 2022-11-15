@@ -8,7 +8,7 @@ use cosmos_sdk_proto::{
         base::{abci::v1beta1::TxResponse, query::v1beta1::PageRequest, v1beta1::Coin},
         tx::v1beta1::{
             AuthInfo, BroadcastMode, BroadcastTxRequest, Fee, GetTxRequest, GetTxsEventRequest,
-            ModeInfo, OrderBy, SignDoc, SignerInfo, SimulateRequest, Tx, TxBody,
+            ModeInfo, OrderBy, SignDoc, SignerInfo, SimulateRequest, SimulateResponse, Tx, TxBody,
         },
     },
     cosmwasm::wasm::v1::{
@@ -497,7 +497,7 @@ impl TxBuilder {
     }
 
     /// Simulate the amount of gas needed to run a transaction.
-    pub async fn simulate(&self, cosmos: &Cosmos, wallet: &Wallet) -> Result<(TxBody, u64)> {
+    pub async fn simulate(&self, cosmos: &Cosmos, wallet: &Wallet) -> Result<FullSimulateResponse> {
         let base_account = cosmos.get_base_account(wallet.address()).await?;
 
         // Deal with account sequence errors, overall relevant issue is: https://phobosfinance.atlassian.net/browse/PERP-283
@@ -526,8 +526,8 @@ impl TxBuilder {
 
     /// Sign transaction, broadcast, wait for it to complete, confirm that it was successful
     pub async fn sign_and_broadcast(&self, cosmos: &Cosmos, wallet: &Wallet) -> Result<TxResponse> {
-        let (body, simulated_gas) = self.simulate(cosmos, wallet).await?;
-        self.execute_gas(cosmos, wallet, body, simulated_gas * 13 / 10)
+        let simres = self.simulate(cosmos, wallet).await?;
+        self.execute_gas(cosmos, wallet, simres.body, simres.gas_used * 13 / 10)
             .await
     }
 
@@ -600,7 +600,7 @@ impl TxBuilder {
         cosmos: &Cosmos,
         wallet: &Wallet,
         sequence: u64,
-    ) -> Result<(TxBody, u64), ExpectedSequenceError> {
+    ) -> Result<FullSimulateResponse, ExpectedSequenceError> {
         let memo = self.memo.as_deref().unwrap_or_default();
         let body = TxBody {
             messages: self.messages.clone(),
@@ -651,14 +651,17 @@ impl TxBuilder {
                 };
             }
         };
+        let gas_used = simres
+            .gas_info
+            .as_ref()
+            .context("Missing gas_info in SimulateResponse")?
+            .gas_used;
 
-        Ok((
+        Ok(FullSimulateResponse {
             body,
-            simres
-                .gas_info
-                .context("Missing gas_info in SimulateResponse")?
-                .gas_used,
-        ))
+            simres,
+            gas_used,
+        })
     }
 
     async fn sign_and_broadcast_with(
@@ -883,4 +886,10 @@ mod tests {
             None
         );
     }
+}
+
+pub struct FullSimulateResponse {
+    pub body: TxBody,
+    pub simres: SimulateResponse,
+    pub gas_used: u64,
 }

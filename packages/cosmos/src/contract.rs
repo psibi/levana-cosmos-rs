@@ -2,7 +2,10 @@ use std::fmt::Display;
 
 use anyhow::{anyhow, Context, Result};
 use cosmos_sdk_proto::{
-    cosmos::base::{abci::v1beta1::TxResponse, v1beta1::Coin},
+    cosmos::{
+        base::{abci::v1beta1::TxResponse, v1beta1::Coin},
+        tx::v1beta1::SimulateResponse,
+    },
     cosmwasm::wasm::v1::{
         ContractInfo, MsgExecuteContract, MsgInstantiateContract, MsgMigrateContract,
         QueryContractHistoryResponse,
@@ -138,6 +141,16 @@ impl Contract {
         Ok(())
     }
 
+    pub async fn simulate(
+        &self,
+        wallet: &Wallet,
+        funds: Vec<Coin>,
+        msg: impl serde::Serialize,
+    ) -> Result<SimulateResponse> {
+        self.simulate_binary(wallet, funds, serde_json::to_vec(&msg)?)
+            .await
+    }
+
     /// Same as [Contract::execute] but the msg is serialized
     pub async fn execute_binary(
         &self,
@@ -152,6 +165,26 @@ impl Contract {
             funds,
         };
         wallet.broadcast_message(&self.client, msg).await
+    }
+
+    /// Same as [Contract::simulate] but the msg is serialized
+    pub async fn simulate_binary(
+        &self,
+        wallet: &Wallet,
+        funds: Vec<Coin>,
+        msg: impl Into<Vec<u8>>,
+    ) -> Result<SimulateResponse> {
+        let msg = MsgExecuteContract {
+            sender: wallet.address().to_string(),
+            contract: self.address.to_string(),
+            msg: msg.into(),
+            funds,
+        };
+        TxBuilder::default()
+            .add_message(msg)
+            .simulate(&self.client, wallet)
+            .await
+            .map(|x| x.simres)
     }
 
     /// Perform a query and return the raw unparsed JSON bytes.

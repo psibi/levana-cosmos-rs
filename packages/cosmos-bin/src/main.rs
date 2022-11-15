@@ -134,6 +134,17 @@ enum Subcommand {
         /// Funds. Example 100ujunox
         funds: Option<String>,
     },
+    /// Simulate executing a message, but don't actually do it
+    SimulateContract {
+        #[clap(flatten)]
+        tx_opt: TxOpt,
+        /// Contract address
+        address: Address,
+        /// Execute message (JSON)
+        msg: String,
+        /// Funds. Example 100ujunox
+        funds: Option<String>,
+    },
     /// Generate wallet
     GenWallet {
         /// Address type: One of cosmos, juno, osmo or levana
@@ -258,6 +269,7 @@ impl Subcommand {
                     .await?;
                 println!("Transaction hash: {}", tx.txhash);
                 println!("Raw log: {}", tx.raw_log);
+                log::debug!("{tx:?}");
             }
             Subcommand::GenWallet { address_type } => gen_wallet(address_type)?,
             Subcommand::PrintAddress {
@@ -361,6 +373,25 @@ impl Subcommand {
                     "levana",
                     &mut std::io::stdout(),
                 );
+            }
+            Subcommand::SimulateContract {
+                tx_opt,
+                address,
+                msg,
+                funds,
+            } => {
+                let contract = cosmos::Contract::new(cosmos.clone(), address);
+                let amount = match funds {
+                    Some(funds) => {
+                        let coin = ParsedCoin::from_str(&funds)?.into();
+                        vec![coin]
+                    }
+                    None => vec![],
+                };
+                let simres = contract
+                    .simulate_binary(&tx_opt.get_wallet(&opt), amount, msg)
+                    .await?;
+                println!("{simres:?}");
             }
         }
 
