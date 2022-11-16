@@ -1,5 +1,5 @@
 pub use address::{parse_raw_address, Address, AddressType, HasAddress, JunoAddress, RawAddress};
-pub use client::{Cosmos, CosmosNetwork, HasCosmos, TxBuilder, TypedMessage};
+pub use client::{BlockInfo, Cosmos, CosmosNetwork, HasCosmos, TxBuilder, TypedMessage};
 pub use codeid::CodeId;
 pub use contract::{Contract, HasContract};
 pub use cosmos_sdk_proto as proto;

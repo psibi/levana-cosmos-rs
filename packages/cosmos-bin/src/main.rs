@@ -11,7 +11,7 @@ use cosmos::{
             ContractCodeHistoryEntry, ContractInfo, QueryContractHistoryResponse,
         },
     },
-    Address, AddressType, CodeId, Coin, CosmosNetwork, RawWallet, Wallet,
+    Address, AddressType, BlockInfo, CodeId, Coin, CosmosNetwork, RawWallet, Wallet,
 };
 use parsed_coin::ParsedCoin;
 
@@ -192,6 +192,11 @@ enum Subcommand {
         /// Which shell to generate for
         #[clap(default_value_t = clap_complete::Shell::Bash)]
         shell: clap_complete::Shell,
+    },
+    /// Show block metadata and transaction hashes within the block
+    ShowBlock {
+        /// Height of the block to show
+        height: i64,
     },
 }
 
@@ -392,6 +397,20 @@ impl Subcommand {
                     .simulate_binary(&tx_opt.get_wallet(&opt), amount, msg)
                     .await?;
                 println!("{simres:?}");
+            }
+            Subcommand::ShowBlock { height } => {
+                let BlockInfo {
+                    height,
+                    timestamp,
+                    txhashes,
+                    block_hash,
+                } = cosmos.get_block_info(height).await?;
+                println!("Height: {height}");
+                println!("Timestamp: {timestamp}");
+                println!("Block hash: {block_hash}");
+                for (idx, txhash) in txhashes.into_iter().enumerate() {
+                    println!("Transaction #{}: {txhash}", idx + 1);
+                }
             }
         }
 

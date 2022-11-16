@@ -1,11 +1,15 @@
 use std::{fmt::Display, str::FromStr, sync::Arc};
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, TimeZone, Utc};
 use cosmos_sdk_proto::{
     cosmos::{
         auth::v1beta1::{BaseAccount, QueryAccountRequest},
         bank::v1beta1::{MsgSend, QueryAllBalancesRequest},
-        base::{abci::v1beta1::TxResponse, query::v1beta1::PageRequest, v1beta1::Coin},
+        base::{
+            abci::v1beta1::TxResponse, query::v1beta1::PageRequest,
+            tendermint::v1beta1::GetBlockByHeightRequest, v1beta1::Coin,
+        },
         tx::v1beta1::{
             AuthInfo, BroadcastMode, BroadcastTxRequest, Fee, GetTxRequest, GetTxsEventRequest,
             ModeInfo, OrderBy, SignDoc, SignerInfo, SimulateRequest, SimulateResponse, Tx, TxBody,
@@ -43,6 +47,9 @@ struct CosmosInner {
         Mutex<cosmos_sdk_proto::cosmos::tx::v1beta1::service_client::ServiceClient<Channel>>,
     wasm_query_client:
         Mutex<cosmos_sdk_proto::cosmwasm::wasm::v1::query_client::QueryClient<Channel>>,
+    tendermint_client: Mutex<
+        cosmos_sdk_proto::cosmos::base::tendermint::v1beta1::service_client::ServiceClient<Channel>,
+    >,
     /// Coins used per 1000 gas
     coins_per_kgas: u64,
     /// How many attempts to give a transaction before giving up
@@ -192,7 +199,10 @@ impl Cosmos {
                 ),
             ),
             wasm_query_client: Mutex::new(
-                cosmos_sdk_proto::cosmwasm::wasm::v1::query_client::QueryClient::new(grpc_channel),
+                cosmos_sdk_proto::cosmwasm::wasm::v1::query_client::QueryClient::new(grpc_channel.clone()),
+            ),
+            tendermint_client: Mutex::new(
+                cosmos_sdk_proto::cosmos::base::tendermint::v1beta1::service_client::ServiceClient::new(grpc_channel)
             ),
             address_type,
             coins_per_kgas,
@@ -461,6 +471,49 @@ impl Cosmos {
             .await?
             .into_inner())
     }
+
+    pub async fn get_block_info(&self, height: i64) -> Result<BlockInfo> {
+        let res = self
+            .inner
+            .tendermint_client
+            .lock()
+            .await
+            .get_block_by_height(GetBlockByHeightRequest { height })
+            .await?
+            .into_inner();
+        let block_id = res.block_id.context("get_block_info: block_id is None")?;
+        let block = res.block.context("get_block_info: block is None")?;
+        let header = block.header.context("get_block_info: header is None")?;
+        let time = header.time.context("get_block_info: time is None")?;
+        let data = block.data.context("get_block_info: data is None")?;
+        anyhow::ensure!(
+            height == header.height,
+            "Mismatched height from blockchain. Got {}, expected {height}",
+            header.height
+        );
+        let mut txhashes = vec![];
+        for tx in data.txs {
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            hasher.update(tx);
+            let digest = hasher.finalize();
+            txhashes.push(hex::encode_upper(&digest));
+        }
+        Ok(BlockInfo {
+            height: header.height,
+            block_hash: hex::encode_upper(block_id.hash),
+            timestamp: Utc.timestamp_nanos(time.seconds * 1_000_000_000 + i64::from(time.nanos)),
+            txhashes,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct BlockInfo {
+    pub height: i64,
+    pub block_hash: String,
+    pub timestamp: DateTime<Utc>,
+    pub txhashes: Vec<String>,
 }
 
 #[derive(Default)]
