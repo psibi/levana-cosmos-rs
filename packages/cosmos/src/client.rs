@@ -497,7 +497,7 @@ impl Cosmos {
             let mut hasher = Sha256::new();
             hasher.update(tx);
             let digest = hasher.finalize();
-            txhashes.push(hex::encode_upper(&digest));
+            txhashes.push(hex::encode_upper(digest));
         }
         Ok(BlockInfo {
             height: header.height,
