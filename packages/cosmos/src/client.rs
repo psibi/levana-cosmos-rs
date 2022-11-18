@@ -209,8 +209,8 @@ impl Cosmos {
             Err(_) => anyhow::bail!("Timed out while connecting to {grpc_url}"),
         };
         let inner = Arc::new(CosmosInner {
-            chain_id: chain_id.into(),
-            gas_coin: gas_coin.into(),
+            chain_id,
+            gas_coin,
             auth_query_client: Mutex::new(
                 cosmos_sdk_proto::cosmos::auth::v1beta1::query_client::QueryClient::new(
                     grpc_channel.clone(),
