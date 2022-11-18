@@ -8,6 +8,8 @@ use anyhow::{Context, Result};
 use bech32::{FromBase32, ToBase32};
 use serde::de::Visitor;
 
+use crate::CosmosNetwork;
+
 /// A raw address value not connected to a specific blockchain. You usually want [Address].
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum RawAddress {
@@ -230,6 +232,22 @@ impl HasAddress for Address {
 impl<T: HasAddress> HasAddress for &T {
     fn get_address(&self) -> &Address {
         HasAddress::get_address(*self)
+    }
+}
+
+pub trait HasAddressType {
+    fn get_address_type(&self) -> AddressType;
+}
+
+impl HasAddressType for AddressType {
+    fn get_address_type(&self) -> AddressType {
+        *self
+    }
+}
+
+impl HasAddressType for CosmosNetwork {
+    fn get_address_type(&self) -> AddressType {
+        self.address_type()
     }
 }
 

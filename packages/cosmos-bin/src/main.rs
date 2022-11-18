@@ -34,6 +34,9 @@ struct Opt {
         global = true
     )]
     network: CosmosNetwork,
+    /// Override gRPC endpoint
+    #[clap(long, env = "COSMOS_GRPC", global = true)]
+    cosmos_grpc: Option<String>,
     /// Turn on verbose output
     #[clap(long, short, global = true)]
     verbose: bool,
@@ -61,8 +64,8 @@ struct TxOpt {
 }
 
 impl TxOpt {
-    pub(crate) fn get_wallet(&self, opt: &crate::Opt) -> Wallet {
-        self.wallet.for_chain(opt.network.address_type())
+    pub(crate) fn get_wallet(&self, address_type: AddressType) -> Wallet {
+        self.wallet.for_chain(address_type)
     }
 }
 
@@ -202,11 +205,16 @@ enum Subcommand {
 
 impl Subcommand {
     pub(crate) async fn go(self, opt: Opt) -> Result<()> {
-        let cosmos = opt.network.connect().await?;
+        let mut builder = opt.network.builder();
+        if let Some(grpc) = opt.cosmos_grpc {
+            builder.grpc_url = grpc;
+        }
+        let cosmos = builder.build().await?;
+        let address_type = cosmos.get_address_type();
 
         match self {
             Subcommand::StoreCode { tx_opt, file } => {
-                let wallet = tx_opt.get_wallet(&opt);
+                let wallet = tx_opt.get_wallet(address_type);
                 let codeid = cosmos.store_code_path(&wallet, &file).await?;
                 println!("Code ID: {codeid}");
             }
@@ -217,7 +225,7 @@ impl Subcommand {
                 msg,
             } => {
                 let contract = CodeId::new(cosmos, code_id)
-                    .instantiate_binary(&tx_opt.get_wallet(&opt), label, vec![], msg)
+                    .instantiate_binary(&tx_opt.get_wallet(address_type), label, vec![], msg)
                     .await?;
                 println!("Contract: {contract}");
             }
@@ -252,7 +260,7 @@ impl Subcommand {
             } => {
                 let contract = cosmos::Contract::new(cosmos, address);
                 contract
-                    .migrate_binary(&tx_opt.get_wallet(&opt), code_id, msg)
+                    .migrate_binary(&tx_opt.get_wallet(address_type), code_id, msg)
                     .await?;
             }
             Subcommand::ExecuteContract {
@@ -270,7 +278,7 @@ impl Subcommand {
                     None => vec![],
                 };
                 let tx = contract
-                    .execute_binary(&tx_opt.get_wallet(&opt), amount, msg)
+                    .execute_binary(&tx_opt.get_wallet(address_type), amount, msg)
                     .await?;
                 println!("Transaction hash: {}", tx.txhash);
                 println!("Raw log: {}", tx.raw_log);
@@ -289,7 +297,7 @@ impl Subcommand {
                 coins,
             } => {
                 let txres = tx_opt
-                    .get_wallet(&opt)
+                    .get_wallet(address_type)
                     .send_coins(
                         &cosmos,
                         &dest,
@@ -394,7 +402,7 @@ impl Subcommand {
                     None => vec![],
                 };
                 let simres = contract
-                    .simulate_binary(&tx_opt.get_wallet(&opt), amount, msg)
+                    .simulate_binary(&tx_opt.get_wallet(address_type), amount, msg)
                     .await?;
                 println!("{simres:?}");
             }

@@ -26,13 +26,19 @@ use serde::de::Visitor;
 use tokio::sync::Mutex;
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 
-use crate::{Address, AddressType};
+use crate::{address::HasAddressType, Address, AddressType};
 
 use super::Wallet;
 
 #[derive(Clone)]
 pub struct Cosmos {
     inner: Arc<CosmosInner>,
+}
+
+impl HasAddressType for Cosmos {
+    fn get_address_type(&self) -> AddressType {
+        self.inner.address_type
+    }
 }
 
 struct CosmosInner {
@@ -63,6 +69,22 @@ pub enum CosmosNetwork {
     JunoLocal,
     OsmosisMainnet,
     OsmosisTestnet,
+}
+
+/// Build a connection
+pub struct CosmosBuilder {
+    pub grpc_url: String,
+    pub chain_id: String,
+    pub gas_coin: String,
+    pub address_type: AddressType,
+    pub coins_per_kgas: u64,
+    pub transaction_attempts: usize,
+}
+
+impl CosmosBuilder {
+    pub async fn build(self) -> Result<Cosmos> {
+        Cosmos::new(self).await
+    }
 }
 
 impl serde::Serialize for CosmosNetwork {
@@ -135,12 +157,16 @@ impl FromStr for CosmosNetwork {
 
 impl CosmosNetwork {
     pub async fn connect(self) -> Result<Cosmos> {
+        self.builder().build().await
+    }
+
+    pub fn builder(self) -> CosmosBuilder {
         match self {
-            CosmosNetwork::JunoTestnet => Cosmos::new_juno_testnet().await,
-            CosmosNetwork::JunoMainnet => Cosmos::new_juno_mainnet().await,
-            CosmosNetwork::JunoLocal => Cosmos::new_juno_local().await,
-            CosmosNetwork::OsmosisMainnet => Cosmos::new_osmosis_mainnet().await,
-            CosmosNetwork::OsmosisTestnet => Cosmos::new_osmosis_testnet().await,
+            CosmosNetwork::JunoTestnet => Cosmos::new_juno_testnet(),
+            CosmosNetwork::JunoMainnet => Cosmos::new_juno_mainnet(),
+            CosmosNetwork::JunoLocal => Cosmos::new_juno_local(),
+            CosmosNetwork::OsmosisMainnet => Cosmos::new_osmosis_mainnet(),
+            CosmosNetwork::OsmosisTestnet => Cosmos::new_osmosis_testnet(),
         }
     }
 
@@ -157,12 +183,14 @@ impl CosmosNetwork {
 
 impl Cosmos {
     pub async fn new(
-        grpc_url: &str,
-        chain_id: impl Into<String>,
-        gas_coin: impl Into<String>,
-        address_type: AddressType,
-        coins_per_kgas: u64,
-        transaction_attempts: usize,
+        CosmosBuilder {
+            grpc_url,
+            chain_id,
+            gas_coin,
+            address_type,
+            coins_per_kgas,
+            transaction_attempts,
+        }: CosmosBuilder,
     ) -> Result<Self> {
         let grpc_endpoint = grpc_url.parse::<Endpoint>()?;
         let grpc_endpoint = if grpc_url.starts_with("https://") {
@@ -211,69 +239,64 @@ impl Cosmos {
         Ok(Cosmos { inner })
     }
 
-    pub async fn new_juno_testnet() -> Result<Self> {
-        Self::new(
-            "https://grpc-testnet.juno.sandbox.levana.finance:443",
+    pub fn new_juno_testnet() -> CosmosBuilder {
+        CosmosBuilder {
+            grpc_url: "https://grpc-testnet.juno.sandbox.levana.finance:443".to_owned(),
             // Backup choice:
             // "http://juno-testnet-grpc.polkachu.com:12690",
-            "uni-5",
-            "ujunox",
-            AddressType::Juno,
-            30,
-            30,
-        )
-        .await
+            chain_id: "uni-5".to_owned(),
+            gas_coin: "ujunox".to_owned(),
+            address_type: AddressType::Juno,
+            coins_per_kgas: 30,
+            transaction_attempts: 30,
+        }
     }
 
-    pub async fn new_juno_local() -> Result<Self> {
-        Self::new(
-            "http://localhost:9090",
-            "testing",
-            "ujunox",
-            AddressType::Juno,
-            30,
-            3, // fail faster during testing
-        )
-        .await
+    pub fn new_juno_local() -> CosmosBuilder {
+        CosmosBuilder {
+            grpc_url: "http://localhost:9090".to_owned(),
+            chain_id: "testing".to_owned(),
+            gas_coin: "ujunox".to_owned(),
+            address_type: AddressType::Juno,
+            coins_per_kgas: 30,
+            transaction_attempts: 3, // fail faster during testing
+        }
     }
 
-    pub async fn new_juno_mainnet() -> Result<Self> {
+    pub fn new_juno_mainnet() -> CosmosBuilder {
         // Found at: https://cosmos.directory/juno/nodes
-        Self::new(
-            "https://grpc.juno.chaintools.tech:443",
-            "juno-1",
-            "ujuno",
-            AddressType::Juno,
-            30,
-            30,
-        )
-        .await
+        CosmosBuilder {
+            grpc_url: "https://grpc.juno.chaintools.tech:443".to_owned(),
+            chain_id: "juno-1".to_owned(),
+            gas_coin: "ujuno".to_owned(),
+            address_type: AddressType::Juno,
+            coins_per_kgas: 30,
+            transaction_attempts: 30,
+        }
     }
 
-    pub async fn new_osmosis_mainnet() -> Result<Self> {
+    pub fn new_osmosis_mainnet() -> CosmosBuilder {
         // Found at: https://docs.osmosis.zone/networks/
-        Self::new(
-            "http://grpc.osmosis.zone:9090",
-            "osmosis-1",
-            "uosmo",
-            AddressType::Osmo,
-            30,
-            30,
-        )
-        .await
+        CosmosBuilder {
+            grpc_url: "http://grpc.osmosis.zone:9090".to_owned(),
+            chain_id: "osmosis-1".to_owned(),
+            gas_coin: "uosmo".to_owned(),
+            address_type: AddressType::Osmo,
+            coins_per_kgas: 30,
+            transaction_attempts: 30,
+        }
     }
 
-    pub async fn new_osmosis_testnet() -> Result<Self> {
+    pub fn new_osmosis_testnet() -> CosmosBuilder {
         // Found at: https://docs.osmosis.zone/networks/
-        Self::new(
-            "https://grpc-testnet.osmosis.sandbox.levana.finance:443",
-            "osmo-test-4",
-            "uosmo",
-            AddressType::Osmo,
-            30,
-            30,
-        )
-        .await
+        CosmosBuilder {
+            grpc_url: "https://grpc-testnet.osmosis.sandbox.levana.finance:443".to_owned(),
+            chain_id: "osmo-test-4".to_owned(),
+            gas_coin: "uosmo".to_owned(),
+            address_type: AddressType::Osmo,
+            coins_per_kgas: 30,
+            transaction_attempts: 30,
+        }
     }
 
     pub async fn get_base_account(&self, address: impl Into<String>) -> Result<BaseAccount> {
