@@ -69,6 +69,7 @@ pub enum CosmosNetwork {
     JunoLocal,
     OsmosisMainnet,
     OsmosisTestnet,
+    Dragonfire,
 }
 
 /// Build a connection
@@ -130,6 +131,7 @@ impl CosmosNetwork {
             CosmosNetwork::JunoLocal => "juno-local",
             CosmosNetwork::OsmosisMainnet => "osmosis-mainnet",
             CosmosNetwork::OsmosisTestnet => "osmosis-testnet",
+            CosmosNetwork::Dragonfire => "dragonfire",
         }
     }
 }
@@ -150,6 +152,7 @@ impl FromStr for CosmosNetwork {
             "juno-local" => Ok(CosmosNetwork::JunoLocal),
             "osmosis-mainnet" => Ok(CosmosNetwork::OsmosisMainnet),
             "osmosis-testnet" => Ok(CosmosNetwork::OsmosisTestnet),
+            "dragonfire" => Ok(CosmosNetwork::Dragonfire),
             _ => Err(anyhow::anyhow!("Unknown network: {s}")),
         }
     }
@@ -167,6 +170,7 @@ impl CosmosNetwork {
             CosmosNetwork::JunoLocal => Cosmos::new_juno_local(),
             CosmosNetwork::OsmosisMainnet => Cosmos::new_osmosis_mainnet(),
             CosmosNetwork::OsmosisTestnet => Cosmos::new_osmosis_testnet(),
+            CosmosNetwork::Dragonfire => Cosmos::new_dragonfire(),
         }
     }
 
@@ -177,6 +181,7 @@ impl CosmosNetwork {
             CosmosNetwork::JunoLocal => AddressType::Juno,
             CosmosNetwork::OsmosisMainnet => AddressType::Osmo,
             CosmosNetwork::OsmosisTestnet => AddressType::Osmo,
+            CosmosNetwork::Dragonfire => AddressType::Levana,
         }
     }
 }
@@ -294,6 +299,18 @@ impl Cosmos {
             chain_id: "osmo-test-4".to_owned(),
             gas_coin: "uosmo".to_owned(),
             address_type: AddressType::Osmo,
+            coins_per_kgas: 30,
+            transaction_attempts: 30,
+        }
+    }
+
+    pub fn new_dragonfire() -> CosmosBuilder {
+        // Found at: https://docs.osmosis.zone/networks/
+        CosmosBuilder {
+            grpc_url: "https://grpc-v3-udb8dydv.dragonfire.sandbox.levana.finance:443".to_owned(),
+            chain_id: "dragonfire-3".to_owned(),
+            gas_coin: "udragonfire".to_owned(),
+            address_type: AddressType::Levana,
             coins_per_kgas: 30,
             transaction_attempts: 30,
         }
