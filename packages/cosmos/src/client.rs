@@ -620,7 +620,7 @@ impl TxBuilder {
     /// Sign transaction, broadcast, wait for it to complete, confirm that it was successful
     pub async fn sign_and_broadcast(&self, cosmos: &Cosmos, wallet: &Wallet) -> Result<TxResponse> {
         let simres = self.simulate(cosmos, wallet).await?;
-        self.execute_gas(cosmos, wallet, simres.body, simres.gas_used * 13 / 10)
+        self.execute_gas(cosmos, wallet, Some(simres.body), simres.gas_used * 13 / 10)
             .await
     }
 
@@ -629,10 +629,11 @@ impl TxBuilder {
         &self,
         cosmos: &Cosmos,
         wallet: &Wallet,
-        body: TxBody,
+        body: Option<TxBody>,
         gas_to_request: u64,
     ) -> Result<TxResponse> {
         let base_account = cosmos.get_base_account(wallet.address()).await?;
+        let body = body.unwrap_or_else(|| self.make_tx_body());
 
         match self
             .sign_and_broadcast_with(
@@ -687,6 +688,17 @@ impl TxBuilder {
         }]
     }
 
+    /// Make a [TxBody] for this builder
+    fn make_tx_body(&self) -> TxBody {
+        TxBody {
+            messages: self.messages.clone(),
+            memo: self.memo.as_deref().unwrap_or_default().to_owned(),
+            timeout_height: 0,
+            extension_options: vec![],
+            non_critical_extension_options: vec![],
+        }
+    }
+
     /// Simulate to calculate the gas costs
     async fn simulate_inner(
         &self,
@@ -694,14 +706,7 @@ impl TxBuilder {
         wallet: &Wallet,
         sequence: u64,
     ) -> Result<FullSimulateResponse, ExpectedSequenceError> {
-        let memo = self.memo.as_deref().unwrap_or_default();
-        let body = TxBody {
-            messages: self.messages.clone(),
-            memo: memo.to_owned(),
-            timeout_height: 0,
-            extension_options: vec![],
-            non_critical_extension_options: vec![],
-        };
+        let body = self.make_tx_body();
 
         // First simulate the request with no signature and fake gas
         let simulate_tx = Tx {

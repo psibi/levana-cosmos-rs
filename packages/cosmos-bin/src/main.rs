@@ -8,10 +8,12 @@ use cosmos::{
     proto::{
         cosmos::base::abci::v1beta1::TxResponse,
         cosmwasm::wasm::v1::{
-            ContractCodeHistoryEntry, ContractInfo, QueryContractHistoryResponse,
+            ContractCodeHistoryEntry, ContractInfo, MsgExecuteContract,
+            QueryContractHistoryResponse,
         },
     },
-    Address, AddressType, BlockInfo, CodeId, Coin, CosmosNetwork, RawWallet, Wallet,
+    Address, AddressType, BlockInfo, CodeId, Coin, CosmosNetwork, HasAddress, RawWallet, TxBuilder,
+    Wallet,
 };
 use parsed_coin::ParsedCoin;
 
@@ -135,7 +137,11 @@ enum Subcommand {
         /// Execute message (JSON)
         msg: String,
         /// Funds. Example 100ujunox
+        #[clap(long)]
         funds: Option<String>,
+        /// Skip the simulate phase and hard-code the given gas request instead
+        #[clap(long)]
+        skip_simulate: Option<u64>,
     },
     /// Simulate executing a message, but don't actually do it
     SimulateContract {
@@ -268,6 +274,7 @@ impl Subcommand {
                 address,
                 msg,
                 funds: amount,
+                skip_simulate,
             } => {
                 let contract = cosmos::Contract::new(cosmos.clone(), address);
                 let amount = match amount {
@@ -277,9 +284,25 @@ impl Subcommand {
                     }
                     None => vec![],
                 };
-                let tx = contract
-                    .execute_binary(&tx_opt.get_wallet(address_type), amount, msg)
-                    .await?;
+                let wallet = tx_opt.get_wallet(address_type);
+
+                let mut tx_builder = TxBuilder::default();
+                tx_builder.add_message_mut(MsgExecuteContract {
+                    sender: wallet.get_address_string(),
+                    contract: contract.get_address_string(),
+                    msg: msg.into_bytes(),
+                    funds: amount,
+                });
+
+                let tx = match skip_simulate {
+                    Some(gas_to_request) => {
+                        tx_builder
+                            .execute_gas(&cosmos, &wallet, None, gas_to_request)
+                            .await?
+                    }
+                    None => tx_builder.sign_and_broadcast(&cosmos, &wallet).await?,
+                };
+
                 println!("Transaction hash: {}", tx.txhash);
                 println!("Raw log: {}", tx.raw_log);
                 log::debug!("{tx:?}");
