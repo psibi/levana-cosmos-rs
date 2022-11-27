@@ -404,6 +404,13 @@ impl Cosmos {
     }
 
     pub async fn wait_for_transaction(&self, txhash: impl Into<String>) -> Result<TxResponse> {
+        self.wait_for_transaction_body(txhash).await.map(|x| x.1)
+    }
+
+    pub async fn wait_for_transaction_body(
+        &self,
+        txhash: impl Into<String>,
+    ) -> Result<(TxBody, TxResponse)> {
         const DELAY_SECONDS: u64 = 2;
         let txhash = txhash.into();
         for attempt in 1..=self.inner.transaction_attempts {
@@ -415,10 +422,17 @@ impl Cosmos {
                 .await;
             match txres {
                 Ok(txres) => {
-                    return txres
-                        .into_inner()
-                        .tx_response
-                        .with_context(|| format!("Missing tx_response for transaction {txhash}"))
+                    let txres = txres.into_inner();
+                    return Ok((
+                        txres
+                            .tx
+                            .with_context(|| format!("Missing tx for transaction {txhash}"))?
+                            .body
+                            .with_context(|| format!("Missing body for transaction {txhash}"))?,
+                        txres.tx_response.with_context(|| {
+                            format!("Missing tx_response for transaction {txhash}")
+                        })?,
+                    ));
                 }
                 Err(e) => {
                     // For some reason, it looks like Osmosis testnet isn't returning a NotFound. Ugly workaround...
